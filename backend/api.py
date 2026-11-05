@@ -13,6 +13,8 @@ from collections import deque
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+import os
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Literal
 
 import joblib
@@ -22,8 +24,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-ROOT = Path(__file__).resolve().parents[1]
-STATIC = Path(__file__).resolve().parent / 'static'
+ROOT = Path(__file__).resolve().parent
+# Frontend is hosted on Vercel; this service only exposes API endpoints.
 SENSORS = ('ambient_temp_c','internal_temp_c','vibration_rms_mms','acoustic_db',
            'pressure_psi','power_kw','campus_occupancy_flag')
 MOVING = ('vibration_rms_mms','internal_temp_c','power_kw')
@@ -198,14 +200,15 @@ async def lifespan(app):
         simulator=None
 
 app=FastAPI(title='CampusPulse Synthetic Digital Twin',version='2.0.0',lifespan=lifespan)
-app.mount('/static',StaticFiles(directory=STATIC),name='static')
+allowed_origins = [origin.strip() for origin in os.getenv('CORS_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',') if origin.strip()]
+app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_credentials=False, allow_methods=['GET','POST'], allow_headers=['Content-Type'])
 
 def live():
     if simulator is None:raise HTTPException(503,'Live simulation not initialized')
     return simulator
 
 @app.get('/',include_in_schema=False)
-def homepage():return FileResponse(STATIC/'index.html')
+def homepage():return {'name':'CampusPulse ML simulator API', 'docs':'/docs', 'health':'/api/health'}
 
 @app.get('/api/health')
 def health():
